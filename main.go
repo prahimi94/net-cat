@@ -17,9 +17,8 @@ type connectionCount struct {
 }
 
 type client struct {
-	index  int
-	number int
-	// mutex          sync.Mutex
+	index          int
+	number         int
 	name           string
 	messageChannel chan string
 	occupied       bool
@@ -60,16 +59,6 @@ func init() {
 	InfoLog = log.New(logFile, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	WarningLog = log.New(logFile, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
 	ErrorLog = log.New(logFile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-}
-
-func createDirIfNotExists(dirPath string) error {
-	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		err = os.MkdirAll(dirPath, 0755) // Use MkdirAll to create parent directories if needed
-		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
-		}
-	}
-	return nil
 }
 
 func main() {
@@ -129,25 +118,39 @@ func establishConnection(port string) {
 			conn.Close()
 			continue
 		}
-		// clients = append(clients, {})
 		wg.Add(1)
 
 		var passingClientIndex int
 		for i, client := range clients {
-			// client.mutex.Lock()
 			if !client.occupied {
 				clients[i].occupied = true
 				passingClientIndex = i
 				break
 			}
-
-			// client.mutex.Unlock()
 		}
 
 		go handleConnection(conn, passingClientIndex, &clients, &connectionCount, &wg)
 
 		go broadcastMessage(conn, passingClientIndex, &clients)
 		wg.Wait()
+	}
+}
+
+func readServerMessages() {
+	// Create a buffered reader to read input from the server console
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		// Read the message typed by the server operator
+		serverMessage, _ := reader.ReadString('\n')
+
+		if strings.HasPrefix(serverMessage, "--clientNames") {
+			for _, client := range clients {
+				if client.name != "" {
+					fmt.Println(client.name)
+				}
+			}
+		}
 	}
 }
 
@@ -196,7 +199,6 @@ func handleConnection(conn net.Conn, passingClientIndex int, clients *[10]client
 	}
 
 	handleClientExit(clientName, clients, passingClientIndex, connectionCount, currentTime)
-
 }
 
 func broadcastMessage(conn net.Conn, passingClientIndex int, clients *[10]client) {
@@ -292,11 +294,6 @@ func handleRename(clientName string, message string, conn net.Conn, clients *[10
 	return true, clientName
 }
 
-func clearClientLastInput(conn net.Conn) {
-	// Clear the current line in the terminal
-	conn.Write([]byte("\033[A\033[K"))
-}
-
 func handleClientExit(clientName string, clients *[10]client, passingClientIndex int, connectionCount *connectionCount, currentTime string) {
 	// fmt.Printf("[%s]: %s has left the chat...\n", currentTime, clientName)
 	if clientName != "" {
@@ -312,24 +309,6 @@ func handleClientExit(clientName string, clients *[10]client, passingClientIndex
 	connectionCount.mutex.Lock()
 	connectionCount.number--
 	connectionCount.mutex.Unlock()
-}
-
-func readServerMessages() {
-	// Create a buffered reader to read input from the server console
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		// Read the message typed by the server operator
-		serverMessage, _ := reader.ReadString('\n')
-
-		if strings.HasPrefix(serverMessage, "--clientNames") {
-			for _, client := range clients {
-				if client.name != "" {
-					fmt.Println(client.name)
-				}
-			}
-		}
-	}
 }
 
 func fillInChannnel(connectionNumber int, statusSend string, clients [10]client, message string) {
@@ -350,7 +329,21 @@ func fillInChannnel(connectionNumber int, statusSend string, clients [10]client,
 	}
 }
 
-// reads the content of a file and returns it as a string
+func clearClientLastInput(conn net.Conn) {
+	// Clear the current line in the terminal
+	conn.Write([]byte("\033[A\033[K"))
+}
+
+func createDirIfNotExists(dirPath string) error {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		err = os.MkdirAll(dirPath, 0755) // Use MkdirAll to create parent directories if needed
+		if err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+		}
+	}
+	return nil
+}
+
 func readFile(fileName string, status string) (string, error) {
 	// Open the file
 	file, err := os.Open(fileName)
@@ -390,7 +383,6 @@ func writeInFile(fileName string, message string) {
 	checkError(err)
 }
 
-// Check for errors
 func checkError(err error) {
 	if err != nil {
 		fmt.Println("Error:", err)
